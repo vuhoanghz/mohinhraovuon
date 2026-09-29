@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mô hình động – Kéo để thay đổi diện tích</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;
+       background:linear-gradient(160deg,#eef2ff 0%,#f8fafc 45%,#ecfdf5 100%);
+       min-height:100vh;padding:20px;user-select:none;overflow-x:hidden}
+  h1{font-size:22px;margin:0 0 6px}
+  .sub{color:#475569;font-size:14px;margin-bottom:16px}
+  .wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:1200px;margin:0 auto}
+  @media(max-width:1000px){.wrap{grid-template-columns:1fr}}
+  .card{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(15,23,42,.08);
+        padding:14px;border:1px solid #e2e8f0}
+  .card h2{font-size:15px;margin:0 0 10px;color:#1e293b;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .badge{background:#fef3c7;color:#b45309;padding:3px 10px;border-radius:20px;
+         font-size:11.5px;font-weight:700;animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+  canvas{display:block;border-radius:10px;margin:0 auto;max-width:100%;touch-action:none;
+         cursor:ns-resize}
+  .controls{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  input[type=range]{flex:1;min-width:180px;accent-color:#2563eb;height:6px;cursor:pointer}
+  button{border:0;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;
+         cursor:pointer;transition:.15s;background:#2563eb;color:#fff}
+  button:hover{background:#1d4ed8}
+  button.ghost{background:#e2e8f0;color:#1e293b}
+  button.ghost:hover{background:#cbd5e1}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  .stat{background:#f1f5f9;border-radius:10px;padding:10px;text-align:center;
+        border:1px solid #e2e8f0;transition:.2s}
+  .stat .lbl{font-size:12px;color:#64748b}
+  .stat .val{font-size:20px;font-weight:700;color:#1e293b;font-variant-numeric:tabular-nums}
+  .stat.hl{background:#fef3c7;border-color:#fcd34d;transform:scale(1.04)}
+  .stat.hl .val{color:#b45309}
+  .formula{margin-top:12px;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:10px;
+           font-family:"Cambria Math",Georgia,serif;font-size:16px;text-align:center;letter-spacing:.3px}
+  .formula b{color:#fbbf24}
+  .msg{margin-top:10px;text-align:center;font-weight:700;min-height:22px;color:#16a34a}
+  .hint{font-size:12.5px;color:#475569;margin-top:10px;line-height:1.55;
+        background:#eff6ff;padding:10px 14px;border-radius:8px;border-left:4px solid #3b82f6}
+  .hint b{color:#1d4ed8}
+</style>
+</head>
+<body>
+
+<h1>Mô hình động: Kéo để thay đổi diện tích</h1>
+<div class="sub">🖱️ <b>Kéo chuột (hoặc vuốt tay) lên/xuống</b> ngay trên hình khu vườn để thay đổi chiều rộng <b>x</b>.</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>🏡 Khu vườn của bác Việt <span class="badge">✋ KÉO ĐƯỢC</span></h2>
+    <canvas id="garden"></canvas>
+    <div class="controls">
+      <span style="font-size:14px;font-weight:600;color:#334155">x =</span>
+      <input id="slider" type="range" min="0.3" max="9.7" step="0.01" value="3">
+      <button id="play">▶ Chạy tự động</button>
+      <button id="reset" class="ghost">↺ Đặt lại</button>
+    </div>
+    <div class="hint">
+      💡 <b>Tổng chiều dài lưới cố định 20 m.</b> Kéo lên → x tăng, cạnh PQ giảm.
+      Tìm giá trị x để diện tích lớn nhất!
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📈 Đồ thị hàm số S(x) = −2x² + 20x</h2>
+    <canvas id="graph"></canvas>
+    <div class="stats">
+      <div class="stat"><div class="lbl">Chiều rộng x</div><div class="val" id="vx">3.00 m</div></div>
+      <div class="stat"><div class="lbl">Cạnh PQ</div><div class="val" id="vpq">14.00 m</div></div>
+      <div class="stat" id="sCard"><div class="lbl">Diện tích S</div><div class="val" id="vs">42.00 m²</div></div>
+    </div>
+    <div class="formula">S(x) = −2x² + 20x &nbsp;→&nbsp; S(<b id="fx">3.00</b>) = <b id="fs">42.00</b> m²</div>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const W = 560, H = 360;
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+  function setupCanvas(id){
+    const c = document.getElementById(id);
+    if (!c) return null;
+    c.width  = W * dpr;
+    c.height = H * dpr;
+    c.style.width  = W + 'px';
+    c.style.height = H + 'px';
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+  const gCtx = setupCanvas('garden');
+  const pCtx = setupCanvas('graph');
+
+  const SCALE = 17;
+  const WALL_Y = 100;
+  const CX = W / 2;
+  const MIN_X = 0.3, MAX_X = 9.7;
+
+  function drawArrow(ctx, x, y, dx, dy){
+    const s = 9, w = 4;
+    const bx = x - s*dx, by = y - s*dy;
+    const px = -dy, py = dx;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(bx + w*px, by + w*py);
+    ctx.lineTo(bx - w*px, by - w*py);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawWall(ctx){
+    const y0 = WALL_Y - 28, y1 = WALL_Y;
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(0, y0, W, y1 - y0);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, y0, W, y1 - y0); ctx.clip();
+    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+    for (let i = -40; i < W + 40; i += 16){
+      ctx.beginPath();
+      ctx.moveTo(i, y1);
+      ctx.lineTo(i + 30, y0);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#475569'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, y1); ctx.lineTo(W, y1); ctx.stroke();
+    ctx.fillStyle = '#334155';
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('BỜ TƯỜNG', 14, y0 + 14);
+  }
+
+  let dragging = false;
+  let dragOffsetY = 0;
+
+  function drawGarden(x){
+    if (!gCtx) return;
+    const ctx = gCtx;
+    ctx.clearRect(0, 0, W, H);
+
+    const grd = ctx.createLinearGradient(0, WALL_Y, 0, H);
+    grd.addColorStop(0, '#f0fdf4');
+    grd.addColorStop(1, '#dcfce7');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, WALL_Y, W, H - WALL_Y);
+
+    drawWall(ctx);
+
+    const safeX = Math.max(MIN_X, Math.min(MAX_X, x));
+    const PQ = 20 - 2*safeX;
+    const S  = -2*safeX*safeX + 20*safeX;
+    const gw = Math.max(PQ, 0) * SCALE;
+    const gh = safeX * SCALE;
+    const left   = CX - gw/2;
+    const right  = CX + gw/2;
+    const top    = WALL_Y;
+    const bottom = WALL_Y + gh;
+
+    // Mảnh đất
+    if (gw > 0.5){
+      ctx.fillStyle = dragging ? 'rgba(74, 222, 128, 0.7)' : 'rgba(74, 222, 128, 0.5)';
+      ctx.fillRect(left, top, gw, Math.max(gh, 0));
+      ctx.strokeStyle = 'rgba(22, 101, 52, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5,4]);
+      ctx.strokeRect(left, top, gw, Math.max(gh, 0));
+      ctx.setLineDash([]);
+    }
+
+    // Hàng rào 3 mặt
+    if (gw > 1){
+      ctx.strokeStyle = '#b45309';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(left, top);
+      ctx.lineTo(left, bottom);
+      ctx.lineTo(right, bottom);
+      ctx.lineTo(right, top);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(left, top);
+      ctx.lineTo(left, bottom);
+      ctx.lineTo(right, bottom);
+      ctx.lineTo(right, top);
+      ctx.stroke();
+    }
+
+    // Hai cột góc
+    [[left, bottom], [right, bottom]].forEach(function(p){
+      if (dragging){
+        ctx.beginPath(); ctx.arc(p[0], p[1], 16, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.35)'; ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, Math.PI*2);
+      ctx.fillStyle = '#78350f'; ctx.fill();
+      ctx.beginPath(); ctx.arc(p[0], p[1], 5.5, 0, Math.PI*2);
+      ctx.fillStyle = dragging ? '#fde047' : '#fbbf24'; ctx.fill();
+      ctx.beginPath(); ctx.arc(p[0], p[1], 2.5, 0, Math.PI*2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+    });
+
+    // Diện tích trong mảnh đất
+    if (gw > 110 && gh > 45){
+      ctx.fillStyle = 'rgba(22, 101, 52, 0.9)';
+      ctx.font = 'bold 22px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('S = ' + S.toFixed(1) + ' m²', CX, (top + bottom)/2);
+    }
+
+    // Kích thước x (bên trái)
+    const dimX = Math.max(38, left - 32);
+    if (gh > 6){
+      ctx.strokeStyle = '#dc2626'; ctx.fillStyle = '#dc2626'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(dimX, top); ctx.lineTo(dimX, bottom); ctx.stroke();
+      drawArrow(ctx, dimX, top, 0, -1);
+      drawArrow(ctx, dimX, bottom, 0, 1);
+      ctx.setLineDash([4,4]);
+      ctx.strokeStyle = 'rgba(220,38,38,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(left, top);    ctx.lineTo(dimX - 6, top);
+      ctx.moveTo(left, bottom); ctx.lineTo(dimX - 6, bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.save();
+    ctx.translate(dimX - 12, (top + bottom)/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillStyle = '#dc2626';
+    ctx.font = 'bold 15px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('x = ' + safeX.toFixed(2) + ' m', 0, 0);
+    ctx.restore();
+
+    // Kích thước PQ (dưới)
+    const dimY = bottom + 32;
+    if (gw > 6){
+      ctx.strokeStyle = '#0ea5e9'; ctx.fillStyle = '#0ea5e9'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(left, dimY); ctx.lineTo(right, dimY); ctx.stroke();
+      drawArrow(ctx, left,  dimY, -1, 0);
+      drawArrow(ctx, right, dimY,  1, 0);
+      ctx.setLineDash([4,4]);
+      ctx.strokeStyle = 'rgba(14,165,233,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(left,  bottom); ctx.lineTo(left,  dimY + 6);
+      ctx.moveTo(right, bottom); ctx.lineTo(right, dimY + 6);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#0ea5e9';
+      ctx.font = 'bold 15px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('PQ = ' + PQ.toFixed(2) + ' m', CX, dimY + 6);
+    }
+
+    // Hướng dẫn kéo — luôn hiện cho đến khi người dùng kéo lần đầu
+    if (!hasDragged){
+      ctx.fillStyle = 'rgba(220, 38, 38, 0.85)';
+      ctx.font = 'bold 12.5px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText('👆 KÉO CHUỘT LÊN/XUỐNG ĐỂ THAY ĐỔI x', CX, H - 8);
+    }
+  }
+
+  /* ===== ĐỒ THỊ ===== */
+  const GP = { ml: 62, mr: 26, mt: 30, mb: 44 };
+  const PW = W - GP.ml - GP.mr;
+  const PH = H - GP.mt - GP.mb;
+  const XMAX = 10.6, YMAX = 56;
+  const sx = u => GP.ml + (u / XMAX) * PW;
+  const sy = v => GP.mt + PH - (v / YMAX) * PH;
+
+  function drawGraph(x){
+    if (!pCtx) return;
+    const ctx = pCtx;
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++){
+      ctx.beginPath(); ctx.moveTo(sx(i), GP.mt); ctx.lineTo(sx(i), GP.mt + PH); ctx.stroke();
+    }
+    for (let v = 0; v <= 50; v += 10){
+      ctx.beginPath(); ctx.moveTo(GP.ml, sy(v)); ctx.lineTo(GP.ml + PW, sy(v)); ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(GP.ml, GP.mt - 8);
+    ctx.lineTo(GP.ml, GP.mt + PH);
+    ctx.lineTo(GP.ml + PW, GP.mt + PH);
+    ctx.stroke();
+    ctx.fillStyle = '#334155';
+    drawArrow(ctx, GP.ml, GP.mt - 8, 0, -1);
+    drawArrow(ctx, GP.ml + PW, GP.mt + PH, 1, 0);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (let i = 2; i <= 10; i += 2){
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sx(i), GP.mt + PH); ctx.lineTo(sx(i), GP.mt + PH + 5); ctx.stroke();
+      ctx.fillText(i, sx(i), GP.mt + PH + 8);
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let v = 10; v <= 50; v += 10){
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(GP.ml - 5, sy(v)); ctx.lineTo(GP.ml, sy(v)); ctx.stroke();
+      ctx.fillText(v, GP.ml - 8, sy(v));
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText('0', GP.ml - 8, GP.mt + PH + 8);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('x (m)', GP.ml + PW - 42, GP.mt + PH + 22);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('S (m²)', GP.ml + 6, GP.mt - 2);
+
+    ctx.beginPath();
+    for (let i = 0; i <= 240; i++){
+      const u = i / 240 * 10;
+      const v = -2*u*u + 20*u;
+      const px = sx(u), py = sy(v);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 3.5;
+    ctx.lineJoin = 'round'; ctx.stroke();
+
+    ctx.beginPath(); ctx.arc(sx(5), sy(50), 7, 0, Math.PI*2);
+    ctx.fillStyle = '#f59e0b'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#b45309';
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('Đỉnh (5 ; 50)', sx(5), sy(50) - 13);
+
+    const safeX = Math.max(MIN_X, Math.min(MAX_X, x));
+    const S = -2*safeX*safeX + 20*safeX;
+    const px = sx(safeX), py = sy(S);
+    ctx.setLineDash([5,5]);
+    ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, sy(0)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(sx(0), py); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI*2);
+    ctx.fillStyle = '#dc2626'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+
+    ctx.fillStyle = '#991b1b';
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    let lx = px + 12, ly = py - 8;
+    if (lx > W - 110){ lx = px - 12; ctx.textAlign = 'right'; }
+    if (ly < GP.mt + 14) ly = py + 22;
+    ctx.fillText('(' + safeX.toFixed(2) + ' ; ' + S.toFixed(1) + ')', lx, ly);
+  }
+
+  /* ===== ĐIỀU KHIỂN ===== */
+  const slider   = document.getElementById('slider');
+  const playBtn  = document.getElementById('play');
+  const resetBtn = document.getElementById('reset');
+
+  let currentX = 3;
+  let hasDragged = false;
+
+  function update(){
+    const x  = currentX;
+    const PQ = 20 - 2*x;
+    const S  = -2*x*x + 20*x;
+
+    document.getElementById('vx').textContent  = x.toFixed(2) + ' m';
+    document.getElementById('vpq').textContent = PQ.toFixed(2) + ' m';
+    document.getElementById('vs').textContent  = S.toFixed(2) + ' m²';
+    document.getElementById('fx').textContent  = x.toFixed(2);
+    document.getElementById('fs').textContent  = S.toFixed(2);
+
+    const isMax = Math.abs(x - 5) < 0.06;
+    document.getElementById('sCard').classList.toggle('hl', isMax);
+    const msg = document.getElementById('msg');
+    msg.textContent = isMax ? '🎉 Tuyệt vời! Diện tích lớn nhất S = 50 m² khi x = 5 m' : '';
+
+    drawGarden(x);
+    drawGraph(x);
+  }
+
+  /* ===== KÉO Ở BẤT KỲ ĐÂU TRÊN HÌNH ===== */
+  const canvas = document.getElementById('garden');
+
+  function getCanvasPos(clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top)  * scaleY
+    };
+  }
+
+  function startDrag(clientY){
+    dragging = true;
+    hasDragged = true;
+    // Offset giữa vị trí chuột và đỉnh mảnh đất (để tránh "nhảy" khi kéo)
+    const pos = getCanvasPos(canvas.getBoundingClientRect().left, clientY);
+    // Đơn giản hơn: dùng trực tiếp vị trí chuột theo trục y
+    const mouseY = clientY;
+    dragOffsetY = mouseY;
+    canvas.style.cursor = 'grabbing';
+  }
+
+  function moveDrag(clientY){
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleY = H / rect.height;
+    const yInCanvas = (clientY - rect.top) * scaleY;
+    // Chiều cao mảnh đất = yInCanvas - WALL_Y
+    const newX = (yInCanvas - WALL_Y) / SCALE;
+    currentX = Math.max(MIN_X, Math.min(MAX_X, newX));
+    slider.value = currentX;
+    update();
+  }
+
+  function endDrag(){
+    if (dragging){
+      dragging = false;
+      canvas.style.cursor = 'ns-resize';
+    }
+  }
+
+  // Chuột
+  canvas.addEventListener('mousedown', function(e){
+    e.preventDefault();
+    startDrag(e.clientY);
+  });
+  window.addEventListener('mousemove', function(e){
+    if (dragging){
+      e.preventDefault();
+      moveDrag(e.clientY);
+    }
+  });
+  window.addEventListener('mouseup', endDrag);
+
+  // Cảm ứng
+  canvas.addEventListener('touchstart', function(e){
+    if (e.touches.length){
+      e.preventDefault();
+      startDrag(e.touches[0].clientY);
+    }
+  }, {passive:false});
+  window.addEventListener('touchmove', function(e){
+    if (dragging && e.touches.length){
+      e.preventDefault();
+      moveDrag(e.touches[0].clientY);
+    }
+  }, {passive:false});
+  window.addEventListener('touchend', endDrag);
+
+  // Click trên slider (khi kéo slider cũng cập nhật)
+  slider.addEventListener('input', function(){
+    stop();
+    currentX = parseFloat(slider.value);
+    hasDragged = true;
+    update();
+  });
+
+  // Nút chạy tự động
+  let playing = false, rafId = null, t0 = 0;
+  function stop(){
+    playing = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    playBtn.textContent = '▶ Chạy tự động';
+  }
+  function loop(now){
+    if (!playing) return;
+    const t = (now - t0) / 1000;
+    currentX = 5 - 4.7 * Math.cos(t * 1.1);
+    slider.value = currentX;
+    update();
+    rafId = requestAnimationFrame(loop);
+  }
+  playBtn.addEventListener('click', function(){
+    if (playing){ stop(); return; }
+    playing = true;
+    playBtn.textContent = '⏸ Dừng';
+    const x0 = currentX;
+    const phase = Math.acos(Math.max(-1, Math.min(1, (5 - x0)/4.7))) / 1.1;
+    t0 = performance.now() - phase * 1000;
+    rafId = requestAnimationFrame(loop);
+  });
+  resetBtn.addEventListener('click', function(){
+    stop();
+    currentX = 3;
+    slider.value = 3;
+    hasDragged = false;
+    update();
+  });
+
+  // Khởi tạo
+  update();
+})();
+</script>
+</body>
+</html>
